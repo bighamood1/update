@@ -36,6 +36,32 @@ def test_understand_location_english():
     assert u.normalized_question
 
 
+def test_understand_university_goals_and_values_arabic():
+    u = understand("ايه اهداف وقيم جامعة المنصورة الجديدة؟")
+    assert u.language == "ar"
+    assert u.intent == "ABOUT"
+    assert u.category == "about"
+    assert u.route is not None
+    assert u.route.category_types == ["about", "home"]
+    assert u.is_multi_intent is False
+
+
+def test_understand_university_vision_and_mission_english():
+    u = understand("What are NMU's vision and mission?")
+    assert u.intent == "ABOUT"
+    assert u.category == "about"
+    assert u.is_multi_intent is False
+
+
+def test_about_query_expansion_targets_profile_sections():
+    u = understand("ما أهداف الجامعة؟")
+    variants = retrieval_variants(u, u.original_question)
+    joined = "\n".join(variants)
+    assert u.intent == "ABOUT"
+    assert "أهدافنا" in joined or "اهدافنا" in joined
+    assert "رؤيتنا" in joined
+
+
 def test_understand_empty_never_raises():
     u = understand("")
     assert u.original_question == ""

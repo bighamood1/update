@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt, QSize, Signal
+from PySide6.QtGui import QIcon, QTextCursor
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -15,6 +18,8 @@ from PySide6.QtWidgets import (
 )
 
 from utils.language import is_rtl
+
+ASSET_DIR = Path(__file__).resolve().parents[1] / "assets"
 
 
 class ChatInput(QTextEdit):
@@ -76,9 +81,10 @@ class ChatInput(QTextEdit):
 
 
 class InputWidget(QWidget):
-    """Bottom input bar: text box + Send button + hint line."""
+    """Bottom input bar: text box + microphone + Send + status line."""
 
     submitted = Signal(str)  # carries the trimmed message text
+    voice_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -112,13 +118,25 @@ class InputWidget(QWidget):
         )
         self._send.clicked.connect(self._on_submit)
 
+        self._voice = QPushButton()
+        self._voice.setObjectName("voiceButton")
+        self._voice.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._voice.setToolTip("Ask by voice")
+        self._voice.setAccessibleName("Ask by voice")
+        self._voice.setFixedSize(52, 52)
+        self._voice.setIcon(QIcon(str(ASSET_DIR / "microphone.svg")))
+        self._voice.setIconSize(QSize(22, 22))
+        self._voice.clicked.connect(self.voice_requested.emit)
+        self._voice_state = "idle"
+
         row.addWidget(self._input, stretch=1)
+        row.addWidget(self._voice, 0, Qt.AlignmentFlag.AlignBottom)
         row.addWidget(self._send, 0, Qt.AlignmentFlag.AlignBottom)
         layout.addLayout(row)
 
-        hint = QLabel("Enter to send  ·  Shift + Enter for a new line")
-        hint.setObjectName("inputHint")
-        layout.addWidget(hint)
+        self._hint = QLabel("Enter to send  ·  Shift + Enter for a new line  ·  Voice question")
+        self._hint.setObjectName("inputHint")
+        layout.addWidget(self._hint)
 
         self._input.textChanged.connect(self._update_send_state)
         self._send.setEnabled(False)
@@ -130,6 +148,10 @@ class InputWidget(QWidget):
     def clear(self) -> None:
         self._input.clear()
 
+    def set_text(self, text: str) -> None:
+        self._input.setPlainText(text)
+        self._input.moveCursor(QTextCursor.MoveOperation.End)
+
     def focus_input(self) -> None:
         self._input.setFocus()
 
@@ -138,9 +160,62 @@ class InputWidget(QWidget):
         self._enabled = enabled
         self._update_send_state()
 
+    def set_voice_enabled(self, enabled: bool) -> None:
+        self._voice_available = enabled
+        self._update_send_state()
+
+    def set_voice_state(self, state: str, message: str = "") -> None:
+        self._voice_state = state
+        if state == "listening":
+            self._voice.setText("")
+            self._voice.setIcon(QIcon(str(ASSET_DIR / "stop_recording.svg")))
+            self._voice.setObjectName("voiceButtonRecording")
+            self._voice.setToolTip("Stop recording")
+            self._voice.setAccessibleName("Stop recording")
+            hint = message or "Listening… speak now. Recording stops after a short silence."
+        elif state == "transcribing":
+            self._voice.setText("…")
+            self._voice.setIcon(QIcon())
+            self._voice.setObjectName("voiceButton")
+            self._voice.setToolTip("Transcribing locally")
+            hint = message or "Transcribing your voice locally…"
+        elif state == "speaking":
+            self._voice.setText("")
+            self._voice.setIcon(QIcon(str(ASSET_DIR / "microphone.svg")))
+            self._voice.setObjectName("voiceButton")
+            self._voice.setToolTip("Ask another question by voice")
+            hint = message or "Speaking answer… click its speaker button to stop or replay."
+        elif state == "error":
+            self._voice.setText("")
+            self._voice.setIcon(QIcon(str(ASSET_DIR / "microphone.svg")))
+            self._voice.setObjectName("voiceButton")
+            self._voice.setToolTip("Ask by voice")
+            hint = message or "Voice input failed. Please try again."
+        else:
+            self._voice.setText("")
+            self._voice.setIcon(QIcon(str(ASSET_DIR / "microphone.svg")))
+            self._voice.setObjectName("voiceButton")
+            self._voice.setToolTip("Ask by voice")
+            self._voice.setAccessibleName("Ask by voice")
+            hint = message or "Enter to send  ·  Shift + Enter for a new line  ·  Voice question"
+        self._voice.style().unpolish(self._voice)
+        self._voice.style().polish(self._voice)
+        self._hint.setText(hint)
+        self._update_send_state()
+
     def _update_send_state(self) -> None:
         has_text = bool(self._input.toPlainText().strip())
-        self._send.setEnabled(has_text and getattr(self, "_enabled", True))
+        enabled = getattr(self, "_enabled", True)
+        self._send.setEnabled(has_text and enabled)
+        available = getattr(self, "_voice_available", True)
+        # While recording the button must stay active so it can stop. During
+        # transcription or a RAG request, accepting a second utterance would
+        # create overlapping turns, so it is disabled.
+        self._voice.setEnabled(
+            available and (self._voice_state == "listening" or (
+                enabled and self._voice_state != "transcribing"
+            ))
+        )
 
     def _on_submit(self) -> None:
         text = self._input.toPlainText().strip()

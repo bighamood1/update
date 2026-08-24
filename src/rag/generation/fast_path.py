@@ -58,7 +58,7 @@ _LOCATION_SIGNAL_AR = (
     "تقع", "يقع", "توجد", "مدينة", "محافظة", "الطريق", "المقر", "العنوان", "بجوار",
 )
 
-_PHONE_RE = re.compile(r"(?<!\d)(01[0125]\d{8}|\d{8,11})(?!\d)")
+_PHONE_RE = re.compile(r"(?<!\d)(01[0125]\d{8})(?!\d)")
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _SENTENCE_BOUNDARY = re.compile(r"[.!؟؟\n]")
 
@@ -71,19 +71,23 @@ _FACULTIES_LIST_QUESTION = re.compile(
     re.IGNORECASE,
 )
 _ACADEMIC_STRUCTURE_QUESTION = re.compile(
-    r"(departments?|programs?|majors?|اقسام|أقسام|قسم|برامج|برنامج)",
+    r"(departments?|programs?|majors?|specializations?|اقسام|أقسام|قسم|برامج|برنامج|تخصصات?|تخصص)",
     re.IGNORECASE,
 )
 _DEPARTMENT_LINE_RE = re.compile(r"^(?:قسم\s+.+|Department\s+of\s+.+)$", re.IGNORECASE)
 _PROGRAM_LINE_RE = re.compile(r"^(?:برنامج\s+.+|Program\s+of\s+.+|.+\s+Program)$", re.IGNORECASE)
 _FEE_RE = re.compile(r"^\d[\d,.\s]*$")
 
+_AR_ACADEMIC_TITLE = (
+    r"(?:[اأ]\s*\.?\s*د\s*\.?\s*/?|"
+    r"(?:ال)?[اأا]ستاذ\s+(?:ال)?دكتور)"
+)
 _AR_DEAN_RE = re.compile(
-    r"(?P<title>[اأ]\s*\.?\s*د\s*\.?)\s*"
+    rf"(?P<title>{_AR_ACADEMIC_TITLE})\s*"
     r"(?P<name>[\u0600-\u06FF]+(?:\s+[\u0600-\u06FF]+){1,4})\s*,?\s*"
-    r"عميد\s+(?:كلية|الكلية)\s+"
+    r"عميد\s+(?:كلية|كليه)\s+"
     r"(?P<faculty>[\u0600-\u06FF ]{2,60}?)"
-    r"(?=\s*(?:[،,.]|و(?:إ|ا)?شراف|وفي|$))",
+    r"(?=\s*(?:[،,.]|أن\b|ان\b|و\s*(?:دكتور|إشراف|اشراف)|وفي|$))",
 )
 _EN_DEAN_RE = re.compile(
     r"(?P<title>Prof(?:essor)?\.?\s*(?:Dr\.?)?)\s*"
@@ -99,14 +103,17 @@ _AR_TITLED_NAME_RE = re.compile(
     r"(?=\s*(?:[|،,\n]|$))"
 )
 _AR_DEAN_BLOCK_RE = re.compile(
-    r"[اأ]\s*\.?\s*د\s*\.?\s*/?\s*"
+    rf"{_AR_ACADEMIC_TITLE}\s*"
     r"(?P<name>[\u0600-\u06FF]+(?:\s+[\u0600-\u06FF]+){1,4})"
-    r"\s*(?:[|\n])\s*عميد\s+(?:الكلية|كلية)"
+    r"\s*(?:[|\n]\s*)?عميد\s+(?:الكلية|الكليه)"
 )
 
 
 def _faculty_tokens(value: str) -> set[str]:
     value = re.sub(r"[^\w\u0600-\u06FF]+", " ", value or "").lower()
+    value = value.translate(str.maketrans({
+        "أ": "ا", "إ": "ا", "آ": "ا", "ة": "ه", "ى": "ي",
+    }))
     tokens: set[str] = set()
     for token in value.split():
         if token in {"كلية", "الكلية", "faculty", "college", "of", "the"}:
@@ -213,7 +220,12 @@ def _location_answer(chunks: list[RetrievedChunk], language: str) -> tuple[str, 
         _LOCATION_SIGNAL_AR if language == "ar" else _LOCATION_SIGNAL_EN,
         _LOCATION_SIGNAL_EN if language == "ar" else _LOCATION_SIGNAL_AR,
     ]
-    for c in chunks:
+    ordered_chunks = sorted(
+        chunks,
+        key=lambda c: (c.language or "").lower() == language,
+        reverse=True,
+    )
+    for c in ordered_chunks:
         if (c.content_type or "").lower() not in ("about", "contact", "home"):
             continue
         text = c.text
@@ -350,18 +362,28 @@ def person_evidence_answer(
                         seen.add(key)
                         matches.append((name, faculty, chunk))
         if matches and requested_tokens:
-            ranked: list[tuple[float, str, str, RetrievedChunk]] = []
+            ranked: list[tuple[float, int, str, str, RetrievedChunk]] = []
             for name, faculty, chunk in matches:
                 candidate_tokens = _faculty_tokens(faculty)
                 union = requested_tokens | candidate_tokens
                 score = len(requested_tokens & candidate_tokens) / len(union) if union else 0.0
-                ranked.append((score, name, faculty, chunk))
-            ranked.sort(key=lambda item: item[0], reverse=True)
+                content_priority = {
+                    "faculty": 4,
+                    "home": 3,
+                    "administration": 3,
+                    "news": 2,
+                    "event": 1,
+                }.get((chunk.content_type or "").lower(), 0)
+                if chunk.faculty and requested_tokens & _faculty_tokens(chunk.faculty):
+                    content_priority += 2
+                ranked.append((score, content_priority, name, faculty, chunk))
+            ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
             best_score = ranked[0][0]
+            best_priority = ranked[0][1]
             matches = [
                 (name, faculty, chunk)
-                for score, name, faculty, chunk in ranked
-                if score == best_score and score > 0
+                for score, priority, name, faculty, chunk in ranked
+                if score == best_score and priority == best_priority and score > 0
             ]
         if len(matches) == 1:
             name, _faculty, used = matches[0]
@@ -419,8 +441,16 @@ def _academic_structure_answer(
         if chunk_used:
             used.append(c)
 
-    want_departments = _contains_any(question, ("department", "departments", "قسم", "أقسام", "اقسام"))
-    want_programs = _contains_any(question, ("program", "programs", "برنامج", "برامج"))
+    asks_specializations = _contains_any(
+        question, ("specialization", "specializations", "major", "majors", "تخصص", "تخصصات")
+    )
+    want_departments = _contains_any(
+        question, ("department", "departments", "قسم", "أقسام", "اقسام")
+    ) or asks_specializations
+    want_programs = _contains_any(
+        question,
+        ("program", "programs", "برنامج", "برامج"),
+    )
     if not want_departments and not want_programs:
         want_departments = want_programs = True
     if want_departments and not departments:
@@ -441,6 +471,7 @@ def _academic_structure_answer(
 def _tuition_answer(
     chunks: list[RetrievedChunk],
     language: str,
+    question: str = "",
 ) -> tuple[str, list[RetrievedChunk]] | None:
     """Extract a clear tuition table when fee rows are explicit in evidence."""
     fee_chunks = [c for c in chunks if (c.content_type or "").lower() == "tuition"]
@@ -480,7 +511,40 @@ def _tuition_answer(
             seen.add(key)
             unique.append((name, value))
     if len(unique) < 3:
+        # Source-document hydration can normalize a whole HTML table into one
+        # line. Recover adjacent faculty/amount pairs without relying on line
+        # breaks; the values still come verbatim from the indexed dataset.
+        flat = re.sub(r"\s+", " ", " ".join(c.text or "" for c in fee_chunks))
+        row_re = re.compile(
+            r"(الطب البشري|طب الأسنان|الصيدلة|الهندسة|علوم وهندسة الحاسب|"
+            r"العلوم الصحية التطبيقية|العلوم|القانون|الأعمال|التمريض)\s+"
+            r"(\d[\d,]*)"
+        )
+        unique = list(dict.fromkeys(row_re.findall(flat)))
+    if len(unique) < 3:
         return None
+    q = (question or "").lower()
+    aliases = {
+        "الطب البشري": ("كلية الطب", "الطب البشري", "medicine"),
+        "طب الأسنان": ("طب الأسنان", "طب الاسنان", "dentistry"),
+        "الصيدلة": ("الصيدلة", "pharmacy"),
+        "الهندسة": ("كلية الهندسة", "engineering"),
+        "علوم وهندسة الحاسب": ("علوم وهندسة الحاسب", "computer science"),
+    }
+    requested = next(
+        (name for name, names in aliases.items() if any(alias in q for alias in names)),
+        None,
+    )
+    if requested:
+        row = next(((name, value) for name, value in unique if requested in name), None)
+        if row:
+            name, value = row
+            answer = (
+                f"رسوم {name} للعام الجامعي المذكور في بيانات الجامعة هي {value} جنيه مصري."
+                if language == "ar"
+                else f"The listed tuition fee for {name} is EGP {value}."
+            )
+            return answer, used
     if language == "ar":
         header = "| الكلية | الرسوم بالجنيه المصري |\n|---|---|"
     else:
@@ -531,6 +595,14 @@ def try_fast_answer(
     intent = (intent or "").upper()
     language = language if language in ("ar", "en") else "en"
 
+    if intent in {
+        "ABOUT", "FAQ", "REGULATION", "TRANSFER", "ADMINISTRATION", "FACILITY",
+        "ADMISSION", "SCHOLARSHIP",
+    }:
+        result = institutional_evidence_answer(question, chunks, language)
+        if result is not None:
+            return result
+
     if intent in ("LIST", "FACULTY", "PROGRAM"):
         if intent == "PROGRAM":
             result = _academic_structure_answer(question, chunks, language)
@@ -541,7 +613,7 @@ def try_fast_answer(
             if result is not None:
                 return result
     elif intent == "TUITION":
-        result = _tuition_answer(chunks, language)
+        result = _tuition_answer(chunks, language, question)
         if result is not None:
             return result
     elif intent == "LOCATION":
@@ -561,6 +633,325 @@ def _clean_lines(text: str) -> list[str]:
         for part in re.split(r"[\n|]+", text or "")
         if part.strip(" \t:-")
     ]
+
+
+_ABOUT_REQUEST_MARKERS = (
+    "هدف", "اهداف", "أهداف", "قيم", "رؤية", "رؤيه", "رسالة", "رساله",
+    "vision", "mission", "goal", "goals", "objective", "objectives",
+    "value", "values",
+)
+_ABOUT_SECTION_HEADINGS = (
+    "أهدافنا وقيمنا", "اهدافنا وقيمنا", "الأهداف الإستراتيجية",
+    "الاهداف الاستراتيجية", "القيم الحاكمة", "رؤيتنا", "رسالتنا",
+    "our goals and values", "strategic objectives", "governing values",
+    "our vision", "our mission", "vision", "mission",
+)
+
+
+def about_evidence_answer(
+    question: str,
+    chunks: list[RetrievedChunk],
+    language: str = "en",
+) -> tuple[str, list[RetrievedChunk]] | None:
+    """Recover an explicitly headed institutional-profile section.
+
+    Qwen occasionally refuses even when a matching About-page section is in
+    its context. This fallback never supplies facts of its own: it selects the
+    requested headed section from an authoritative retrieved chunk, removes
+    the heading, and formats the section's own sentences as a readable list.
+    """
+    q = (question or "").lower()
+    if not any(marker.lower() in q for marker in _ABOUT_REQUEST_MARKERS):
+        return None
+
+    asks_goals = any(m in q for m in ("هدف", "اهداف", "أهداف", "goal", "objective"))
+    asks_values = any(m in q for m in ("قيم", "value"))
+    asks_vision = any(m in q for m in ("رؤ", "vision"))
+    asks_mission = any(m in q for m in ("رسال", "mission"))
+
+    def find_section(headings: tuple[str, ...]) -> tuple[RetrievedChunk, str] | None:
+        found: list[tuple[int, RetrievedChunk, str]] = []
+        for chunk in chunks:
+            if (chunk.content_type or "").lower() != "about":
+                continue
+            text = re.sub(r"\s+", " ", chunk.text or "").strip()
+            low = text.lower()
+            for rank, heading in enumerate(headings):
+                pos = low.find(heading.lower())
+                if pos >= 0:
+                    lang_penalty = 0 if (chunk.language or "").lower() == language else 1
+                    found.append((rank * 10 + lang_penalty, chunk, text[pos + len(heading):].strip(" :-")))
+                    break
+        if not found:
+            return None
+        found.sort(key=lambda row: (row[0], -row[1].score))
+        _, chunk, text = found[0]
+        return chunk, text
+
+    if asks_vision and asks_mission:
+        vision = find_section(("رؤيتنا", "our vision", "vision"))
+        mission = find_section(("رسالتنا", "our mission", "mission"))
+        if vision is not None and mission is not None:
+            vision_chunk, vision_text = vision
+            mission_chunk, mission_text = mission
+            if language == "ar":
+                answer = f"- الرؤية: {vision_text}\n- الرسالة: {mission_text}"
+            else:
+                answer = f"- Vision: {vision_text}\n- Mission: {mission_text}"
+            used = [vision_chunk]
+            if mission_chunk.chunk_id != vision_chunk.chunk_id:
+                used.append(mission_chunk)
+            return answer, used
+
+    if asks_goals and asks_values:
+        preferred = ("أهدافنا وقيمنا", "اهدافنا وقيمنا", "our goals and values")
+    elif asks_goals:
+        preferred = (
+            "الأهداف الإستراتيجية", "الاهداف الاستراتيجية",
+            "أهدافنا وقيمنا", "اهدافنا وقيمنا", "strategic objectives",
+            "our goals and values",
+        )
+    elif asks_values:
+        preferred = (
+            "القيم الحاكمة", "أهدافنا وقيمنا", "اهدافنا وقيمنا",
+            "governing values", "our goals and values",
+        )
+    elif asks_vision:
+        preferred = ("رؤيتنا", "our vision", "vision")
+    elif asks_mission:
+        preferred = ("رسالتنا", "our mission", "mission")
+    else:
+        return None
+
+    selected = find_section(preferred)
+    if selected is None:
+        return None
+    used, section = selected
+
+    # The section may span multiple chunks. Append following chunks from the
+    # same indexed document until the next explicit About-page heading.
+    siblings = sorted(
+        (
+            c for c in chunks
+            if c.document_id == used.document_id
+            and (c.source_url or "") == (used.source_url or "")
+            and (c.language or "").lower() == (used.language or "").lower()
+        ),
+        key=lambda c: c.chunk_index or 0,
+    )
+    used_index = used.chunk_index or 0
+    for sibling in siblings:
+        sibling_index = sibling.chunk_index or 0
+        if sibling_index <= used_index:
+            continue
+        continuation = re.sub(r"\s+", " ", sibling.text or "").strip()
+        low_continuation = continuation.lower()
+        heading_positions = [
+            low_continuation.find(h.lower())
+            for h in _ABOUT_SECTION_HEADINGS
+            if low_continuation.find(h.lower()) >= 0
+        ]
+        if heading_positions:
+            cut = min(heading_positions)
+            if cut > 20:
+                section += " " + continuation[:cut].strip()
+            break
+        section += " " + continuation
+
+    # Do not let an adjacent indexed section leak into the answer.
+    low_section = section.lower()
+    cuts = [
+        low_section.find(h.lower())
+        for h in _ABOUT_SECTION_HEADINGS
+        if low_section.find(h.lower()) > 20
+    ]
+    if cuts:
+        section = section[:min(cuts)].strip()
+
+    items = [
+        part.strip(" -•\t")
+        for part in re.split(r"(?<=[.!؟])\s+|\n+", section)
+        if len(part.strip(" -•\t")) >= 8
+    ]
+    # Overlapping chunks can repeat the end of a sentence; preserve the first
+    # occurrence only while keeping the official order.
+    unique_items: list[str] = []
+    seen_items: set[str] = set()
+    for item in items:
+        key = re.sub(r"\W+", " ", item, flags=re.UNICODE).strip().lower()
+        if key and key not in seen_items:
+            seen_items.add(key)
+            unique_items.append(item)
+    items = unique_items
+    if not items:
+        return None
+    if len(items) > 1:
+        title = "### أهداف وقيم الجامعة" if language == "ar" else "### University goals and values"
+        answer = title + "\n\n" + "\n".join(f"{i}. {item}" for i, item in enumerate(items, 1))
+    else:
+        answer = items[0]
+    return answer, [used]
+
+
+def institutional_evidence_answer(
+    question: str,
+    chunks: list[RetrievedChunk],
+    language: str = "en",
+) -> tuple[str, list[RetrievedChunk]] | None:
+    """Answer common institutional questions by extracting official evidence.
+
+    This deliberately contains no university facts.  It recognises the shape
+    of a question, then returns only sentences/list items present in the
+    retrieved official page.  It is primarily a reliability fallback for the
+    small local model, which can otherwise spend its token budget reasoning
+    and incorrectly refuse despite having the exact sentence in context.
+    """
+    q = (question or "").lower()
+    preferred = [c for c in chunks if (c.language or "").lower() == language]
+    pool = preferred or chunks
+
+    def relevant(types: set[str]) -> list[RetrievedChunk]:
+        return [c for c in pool if (c.content_type or "").lower() in types]
+
+    def joined(types: set[str]) -> tuple[str, list[RetrievedChunk]]:
+        used = relevant(types)
+        used.sort(key=lambda c: (c.source_url or "", c.chunk_index or 0))
+        return "\n".join(c.text or "" for c in used), used
+
+    def sentences(text: str) -> list[str]:
+        flat = re.sub(r"\s+", " ", text or "").strip()
+        return [p.strip() for p in re.split(r"(?<=[.!؟])\s+", flat) if p.strip()]
+
+    def select(types: set[str], predicates, limit: int = 4):
+        text, used = joined(types)
+        if not text:
+            return None
+        selected = [
+            s for s in sentences(text)
+            if any(all(token in s.lower() for token in group) for group in predicates)
+        ]
+        selected = list(dict.fromkeys(selected))[:limit]
+        if not selected:
+            return None
+        source = next((c for c in used if any(x in (c.text or "") for x in selected)), used[0])
+        return "\n".join(f"- {s}" for s in selected), [source]
+
+    # Establishment/history.
+    if any(x in q for x in ("متى", "انشئت", "أنشئت", "تأسست", "established", "founded")):
+        result = select(
+            {"about", "home", "news"},
+            [("presidential decree", "2020"), ("قرار", "437", "2020"), ("إنشاء", "437", "2020")],
+            2,
+        )
+        if result:
+            return result
+
+    # Study system, changing/combining majors.
+    if any(x in q for x in ("نظام الدراسة", "الساعات المعتمدة", "study system", "credit hour")):
+        result = select({"about", "policy", "faq"}, [("الساعات المعتمدة",), ("credit hour",)], 3)
+        if result:
+            return result
+    if any(x in q for x in ("تغيير التخصص", "اغير تخصص", "أغير تخصص", "change major", "change specialization")):
+        result = select({"about", "policy"}, [("تغيير تخصصه",), ("change", "specialization")], 2)
+        if result:
+            return result
+    if any(x in q for x in ("تخصصين", "تخصصان", "two majors", "two special")):
+        result = select({"about", "policy"}, [("دراسة تخصصين",), ("study two",)], 2)
+        if result:
+            return result
+
+    # Campus facilities and services.
+    if any(x in q for x in ("مرافق", "facilities")):
+        text, used = joined({"about", "facility"})
+        labels = (
+            "مبنى الإدارة ومركز المؤتمرات", "المكتبة المركزية",
+            "المستشفى الجامعي (جاري الإنشاء)", "مستشفى الفم والأسنان",
+            "مسجد بمساحة 500 متر مربع", "سكن للطلاب",
+            "سكن لأعضاء هيئة التدريس", "أماكن خدمية لوقوف السيارات",
+            "مساحات خضراء",
+        )
+        found = [label for label in labels if label in text]
+        if found and used:
+            return "تشمل المرافق المذكورة في بيانات الجامعة:\n" + "\n".join(f"- {x}" for x in found), [used[0]]
+    if any(x in q for x in ("سكن", "إسكان", "اسكان", "housing", "dorm")):
+        result = select({"about", "facility"}, [("سكن للطلاب",), ("إسكان",), ("housing",)], 3)
+        if result:
+            return result
+    if any(x in q for x in ("مستشفى", "hospital")):
+        result = select({"about", "facility"}, [("المستشفى الجامعي",), ("مستشفى الفم والأسنان",), ("hospital",)], 3)
+        if result:
+            return result
+
+    # Governance.
+    if any(x in q for x in ("دور مجلس الجامعة", "مهام مجلس الجامعة", "role of the university council")):
+        text, used = joined({"about", "administration"})
+        flat = re.sub(r"\s+", " ", text)
+        start = flat.find("يكون لجامعة المنصورة الجديدة مجلس")
+        end_marker = "يشكل مجلس الجامعة"
+        end = flat.find(end_marker, start + 1)
+        if start >= 0 and used:
+            block = flat[start:end if end > start else start + 700].strip()
+            return block, [used[0]]
+    if any(x in q for x in ("أعضاء مجلس الأمناء", "اعضاء مجلس الامناء", "board of trustees members")):
+        text, used = joined({"about", "administration"})
+        flat = re.sub(r"\s+", " ", text)
+        start = flat.find("تم تشكيل مجلس أمناء")
+        end = flat.find("مجلس الجامعة", start + 1)
+        block = flat[start:end if end > start else None] if start >= 0 else ""
+        names = re.findall(
+            r"(?:الأستاذة? الدكتور(?:ة)?|الأستاذ|المهندس)\s*/?\s*"
+            r"([^\"]{5,90}?)(?=\s+(?:وزير|محافظ|الأستاذ|رئيس|عضو|نائب|ممثل|المهندس)|\s*\")",
+            block,
+        )
+        names = [re.sub(r"\s+", " ", n).strip(" ،.") for n in names]
+        bad_name_words = ("كلية", "جامعة", "رئيس", "محافظ", "عضو", "نائب")
+        names = list(dict.fromkeys(
+            n for n in names
+            if len(n.split()) >= 3 and not any(word in n for word in bad_name_words)
+        ))
+        if names and used:
+            return "أعضاء مجلس الأمناء المذكورون في بيانات الجامعة:\n" + "\n".join(f"- {n}" for n in names), [used[0]]
+
+    # Admission, transfer and scholarships: return the official rule text,
+    # never a model-invented summary.
+    if any(x in q for x in ("شروط القبول", "شروط الالتحاق", "admission requirements")):
+        result = select(
+            {"admission"},
+            [("شهادة الثانوية العامة", "شروط"), ("المستندات المطلوبة",), ("certificate", "requirements")],
+            6,
+        )
+        if result:
+            return result
+    if any(x in q for x in ("قواعد التحويل", "transfer rules")):
+        text, used = joined({"regulation"})
+        flat = re.sub(r"\s+", " ", text)
+        start = flat.find("أولاً: التحويل")
+        if start < 0:
+            start = flat.find("أولا: التحويل")
+        if start >= 0 and used:
+            end = flat.find("اتصل بنا", start)
+            block = flat[start:end if end > start else start + 2600].strip()
+            # Keep a useful, bounded official excerpt; the source button gives
+            # access to the complete annually versioned rules.
+            if len(block) > 2200:
+                block = block[:2200].rsplit(" ", 1)[0] + "…"
+            return block, [used[0]]
+        result = select(
+            {"regulation"},
+            [("الطلاب المحولين",), ("الساعات المعتمدة",), ("الحد الأدنى",), ("transfer",)],
+            7,
+        )
+        if result:
+            return result
+    if any(x in q for x in ("منح", "منحة", "scholarship")):
+        result = select(
+            {"scholarship"},
+            [("منح", "التفوق"), ("خصم",), ("الدعم الاجتماعي",), ("scholarship",)],
+            8,
+        )
+        if result:
+            return result
+    return None
 
 
 def _append_unique(items: list[str], value: str) -> bool:

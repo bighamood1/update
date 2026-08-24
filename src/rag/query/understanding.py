@@ -44,6 +44,7 @@ _FACULTY_TOPICS: dict[str, str] = {
 # Intent -> (topic, subtopic). Topics are stable slugs used for analytics,
 # cache compatibility and (later) retrieval memory grouping.
 _TOPIC_MAP: dict[str, tuple[str, str]] = {
+    "ABOUT": ("about", "institutional_profile"),
     "ADMISSION": ("admission", "requirements"),
     "TUITION": ("tuition", "fees"),
     "SCHOLARSHIP": ("scholarship", "funding"),

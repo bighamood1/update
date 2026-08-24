@@ -51,11 +51,11 @@ def build_rag_prompt(
     list_hint = ""
     if intent:
         intent_upper = (intent or "").upper()
-        if intent_upper in {"LIST", "FACULTY", "PROGRAM", "SCHOLARSHIP"}:
+        if intent_upper in {"LIST", "FACULTY", "PROGRAM", "SCHOLARSHIP", "ABOUT"}:
             list_hint = (
-                "The question asks for a list. Answer with a \"###\" heading "
-                "followed by a numbered list that includes EVERY item present "
-                "in the context."
+                "When the requested information contains multiple distinct items, "
+                "answer with a short heading followed by a numbered list that "
+                "includes every relevant item supported by the context."
             )
     conversation_block = ""
     if conversation:
@@ -71,7 +71,9 @@ def build_rag_prompt(
         f"Answer in {lang_name}.\n"
         "Use only the evidence above. Return only the final answer. "
         "Do not mention evidence, context, sources, URLs, or internal steps. "
-        "Do not repeat facts. If the evidence is insufficient, say so briefly. "
+        "Do not repeat facts. If the evidence contains facts that answer any "
+        "part of the question, answer that part directly; only say it is "
+        "insufficient when no relevant fact is present. "
         + (list_hint + "\n" if list_hint else "")
     )
 
@@ -92,7 +94,7 @@ def build_repair_prompt(
     }.get((language or "en").lower(), "the dominant language of the user")
     issue_text = ", ".join(issues) if issues else "formatting_or_completeness"
     list_hint = ""
-    if (intent or "").upper() in {"LIST", "FACULTY", "PROGRAM", "SCHOLARSHIP"}:
+    if (intent or "").upper() in {"LIST", "FACULTY", "PROGRAM", "SCHOLARSHIP", "ABOUT"}:
         list_hint = (
             "For list-style evidence, include the complete set of distinct "
             "items supported by the evidence."

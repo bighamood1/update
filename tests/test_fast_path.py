@@ -6,6 +6,7 @@ import pytest
 
 from rag.generation.fast_path import (
     _academic_structure_answer,
+    about_evidence_answer,
     _contact_answer,
     _faculties_answer,
     _location_answer,
@@ -46,6 +47,57 @@ _AR_DIR = (
     "الأعمال\nاعرف المزيد\nالقانون\nاعرف المزيد\nالهندسة\nاعرف المزيد\n"
     "العلوم\nاعرف المزيد\nالطب\nاعرف المزيد\nطب الأسنان"
 )
+
+
+def test_about_evidence_recovers_explicit_goals_and_values_section():
+    chunks = [
+        _chunk(
+            "about-1",
+            "أهدافنا وقيمنا تحقيق التميز من خلال برامج عالية الجودة. "
+            "تعزيز الإبداع وتشجيع الابتكار. الالتزام بالنزاهة والشفافية.",
+            source_url="https://nmu.edu.eg/ar/about-us",
+            content_type="about",
+            language="ar",
+        )
+    ]
+    result = about_evidence_answer("ايه اهداف وقيم الجامعة؟", chunks, "ar")
+    assert result is not None
+    answer, used = result
+    assert "تحقيق التميز" in answer
+    assert "تعزيز الإبداع" in answer
+    assert "النزاهة والشفافية" in answer
+    assert used == chunks
+
+
+def test_about_evidence_does_not_answer_unrelated_question():
+    chunks = [
+        _chunk(
+            "about-1", "رؤيتنا جامعة متميزة محليا وعالميا.",
+            content_type="about", language="ar",
+        )
+    ]
+    assert about_evidence_answer("أين تقع الجامعة؟", chunks, "ar") is None
+
+
+def test_about_evidence_returns_both_vision_and_mission():
+    chunks = [
+        _chunk(
+            "vision", "رؤيتنا جامعة متميزة محليا وعالميا.",
+            source_url="https://nmu.edu.eg/ar/about-us",
+            content_type="about", language="ar",
+        ),
+        _chunk(
+            "mission", "رسالتنا تقديم برامج تنافسية وإعداد خريجين مؤهلين.",
+            source_url="https://nmu.edu.eg/ar/about-us",
+            content_type="about", language="ar",
+        ),
+    ]
+    result = about_evidence_answer("ما رؤية الجامعة ورسالتها؟", chunks, "ar")
+    assert result is not None
+    answer, used = result
+    assert "الرؤية:" in answer and "جامعة متميزة" in answer
+    assert "الرسالة:" in answer and "برامج تنافسية" in answer
+    assert len(used) == 2
 
 
 class TestFaculties:
@@ -156,6 +208,44 @@ class TestPersonEvidenceFallback:
         )
         assert "وائل صديق" in answer
         assert used == chunks
+
+    def test_extracts_colloquial_academic_title_for_engineering_dean(self):
+        chunks = [_chunk(
+            "p-colloquial",
+            "وجود استاذ دكتور وائل صديق عميد كليه الهندسه ودكتور ساره البهلول رئيسه البرامج",
+            source_url="https://www.nmu.edu.eg/ar",
+            content_type="home",
+            language="ar",
+        )]
+        answer, used = person_evidence_answer(
+            "من عميد كلية الهندسة؟", chunks, "ar"
+        )
+        assert "وائل صديق" in answer
+        assert used == chunks
+
+    def test_prefers_nmu_home_over_foreign_dean_in_news(self):
+        chunks = [
+            _chunk(
+                "nmu-dean",
+                "وجود استاذ دكتور وائل صديق عميد كليه الهندسه ودكتور ساره البهلول رئيسه البرامج",
+                source_url="https://www.nmu.edu.eg/ar",
+                content_type="home",
+                language="ar",
+            ),
+            _chunk(
+                "foreign-dean",
+                "البروفيسور إيمانويل كولينز عميد كلية الهندسة، خلال زيارة جامعة لويفيل.",
+                source_url="https://www.nmu.edu.eg/ar/news/96",
+                content_type="news",
+                language="ar",
+            ),
+        ]
+        answer, used = person_evidence_answer(
+            "من عميد كلية الهندسة؟", chunks, "ar"
+        )
+        assert "وائل صديق" in answer
+        assert "إيمانويل" not in answer
+        assert used == [chunks[0]]
 
     def test_extracts_dean_when_name_and_role_are_separate_page_fields(self):
         chunk = _chunk(

@@ -8,6 +8,13 @@ API and shows the final answer (plus an optional, user-expandable source
 list). It does **not** touch ChromaDB, embeddings, reranking, or Ollama, and
 it does **not** modify any existing RAG code.
 
+The same interface now accepts both text and voice. Press the microphone,
+speak in Arabic or English, and pause (or press stop): local Whisper turns the
+recording into text, then that transcript is sent through the exact same
+`/chat` endpoint and conversation history as typed input. Press the speaker
+button beside any assistant message to read that displayed answer aloud;
+playback never generates a second answer or bypasses the RAG data.
+
 ```
 GUI  ──HTTP──▶  RAG API  ──▶  Existing RAG Pipeline  ──▶  ChromaDB / Ollama / Qwen3-VL:8b
 ```
@@ -26,6 +33,11 @@ GUI  ──HTTP──▶  RAG API  ──▶  Existing RAG Pipeline  ──▶  
   ```powershell
   .\.venv\Scripts\python.exe -m pip install -r gui\requirements.txt
   ```
+
+- Windows microphone permission must be enabled for desktop apps. The first
+  voice question loads/downloads the configured `faster-whisper` model. The
+  first playback of an answer uses the configured neural TTS voice and caches
+  the resulting audio locally for instant replay.
 
 ## 1. Start the RAG API
 

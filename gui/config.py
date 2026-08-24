@@ -34,3 +34,17 @@ API_TIMEOUT_SECONDS = float(os.getenv("API_TIMEOUT_SECONDS", "1200"))
 
 # Trim a finished answer that exceeds this many characters (defensive only).
 MAX_ANSWER_CHARS = int(os.getenv("MAX_ANSWER_CHARS", "20000"))
+
+# Local voice input/output. The transcript still goes through the exact same
+# RAG /chat endpoint as typed input; these values only control audio I/O.
+VOICE_ENABLED = os.getenv("VOICE_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+VOICE_STT_MODEL = os.getenv("VOICE_STT_MODEL", "small")
+VOICE_STT_DEVICE = os.getenv("VOICE_STT_DEVICE", "cpu")
+VOICE_STT_COMPUTE_TYPE = os.getenv("VOICE_STT_COMPUTE_TYPE", "int8")
+VOICE_SAMPLE_RATE = int(os.getenv("VOICE_SAMPLE_RATE", "16000"))
+VOICE_SILENCE_SECONDS = float(os.getenv("VOICE_SILENCE_SECONDS", "1.2"))
+VOICE_SILENCE_THRESHOLD = float(os.getenv("VOICE_SILENCE_THRESHOLD", "350"))
+VOICE_MIN_RECORD_SECONDS = float(os.getenv("VOICE_MIN_RECORD_SECONDS", "0.5"))
+VOICE_MAX_RECORD_SECONDS = float(os.getenv("VOICE_MAX_RECORD_SECONDS", "20"))
+VOICE_TTS_ARABIC_VOICE = os.getenv("VOICE_TTS_ARABIC_VOICE", "ar-EG-SalmaNeural")
+VOICE_TTS_ENGLISH_VOICE = os.getenv("VOICE_TTS_ENGLISH_VOICE", "en-US-AvaMultilingualNeural")

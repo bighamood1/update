@@ -10,6 +10,19 @@ from __future__ import annotations
 
 # intent -> weighted keyword list. Higher weight = stronger signal.
 INTENT_KEYWORDS: dict[str, list[tuple[str, float]]] = {
+    "ABOUT": [
+        ("vision", 2.0), ("mission", 2.0), ("objective", 2.0),
+        ("objectives", 2.0), ("goal", 2.0), ("goals", 2.0),
+        ("value", 2.0), ("values", 2.0), ("history", 1.5),
+        ("established", 1.5), ("about university", 1.5),
+        ("رؤية", 2.0), ("رؤيتنا", 2.0), ("رسالة", 2.0),
+        ("رسالتنا", 2.0), ("هدف", 2.0), ("اهداف", 2.0),
+        ("الأهداف", 2.0), ("قيم", 2.0), ("القيم", 2.0),
+        ("نشأة", 1.5), ("تأسست", 1.5), ("عن الجامعة", 1.5),
+        ("أنشئت", 2.0), ("انشئت", 2.0), ("إنشاء الجامعة", 2.0),
+        ("نظام الدراسة", 2.2), ("الساعات المعتمدة", 2.2),
+        ("تغيير التخصص", 2.2), ("دراسة تخصصين", 2.2),
+    ],
     "COMPARISON": [
         ("compare", 2.0), ("comparison", 2.0), ("difference", 2.0),
         ("vs", 1.5), ("versus", 1.5), ("between", 1.0),
@@ -57,6 +70,8 @@ INTENT_KEYWORDS: dict[str, list[tuple[str, float]]] = {
     "FACILITY": [
         ("facility", 1.5), ("facilities", 1.5), ("library", 1.5), ("lab", 1.0),
         ("مرافق", 1.5), ("مكتبة", 1.5), ("معامل", 1.0),
+        ("سكن", 2.0), ("إسكان", 2.0), ("اسكان", 2.0),
+        ("مستشفى", 2.0), ("hospital", 2.0), ("housing", 2.0),
     ],
     "NEWS": [
         ("news", 1.5), ("latest", 1.0), ("event", 1.0), ("أخبار", 1.5),
@@ -90,6 +105,7 @@ INTENT_KEYWORDS: dict[str, list[tuple[str, float]]] = {
 
 # intent -> (category, concrete content_type values for Chroma filtering)
 CATEGORY_MAP: dict[str, tuple[str, list[str]]] = {
+    "ABOUT": ("about", ["about", "home"]),
     "ADMISSION": ("admissions", ["admission", "tuition", "faq", "about", "home"]),
     "TUITION": ("tuition", ["tuition", "admission", "faq", "about", "home"]),
     "SCHOLARSHIP": ("scholarships", ["scholarship", "about", "home", "news"]),
@@ -111,6 +127,7 @@ CATEGORY_MAP: dict[str, tuple[str, list[str]]] = {
 # boosts chunks of these types during fusion so e.g. an ADMISSION question
 # surfaces the actual admission page rather than generic news/home pages.
 PRIORITY_TYPES: dict[str, list[str]] = {
+    "ABOUT": ["about"],
     "ADMISSION": ["admission"],
     "TUITION": ["tuition"],
     "SCHOLARSHIP": ["scholarship"],

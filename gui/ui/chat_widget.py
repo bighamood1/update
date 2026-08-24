@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QFrame,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
+    QLabel,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -16,12 +22,15 @@ from PySide6.QtWidgets import (
 
 from ui.message_widget import LoadingBubble, MessageBubble
 
+ASSET_DIR = Path(__file__).resolve().parents[1] / "assets"
+
 
 class ChatWidget(QWidget):
     """The scrolling conversation area (messages + welcome overlay)."""
 
     suggestion_clicked = Signal(str)
     feedback_requested = Signal(str, str)  # (question_id, rating)
+    speak_requested = Signal(str)  # assistant answer to read aloud
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -36,6 +45,20 @@ class ChatWidget(QWidget):
         self._grid.setRowStretch(0, 1)
         self._grid.setColumnStretch(0, 1)
 
+        # Fixed, very light brand watermark behind the transparent scroll
+        # surface. Message bubbles remain opaque and readable above it.
+        self._watermark_source = QPixmap(str(ASSET_DIR / "nmu_logo_watermark.png"))
+        self._watermark = QLabel()
+        self._watermark.setObjectName("chatWatermark")
+        self._watermark.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._watermark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        watermark_opacity = QGraphicsOpacityEffect(self._watermark)
+        watermark_opacity.setOpacity(0.055)
+        self._watermark.setGraphicsEffect(watermark_opacity)
+        self._grid.addWidget(
+            self._watermark, 0, 0, alignment=Qt.AlignmentFlag.AlignCenter
+        )
+
         # --- scroll area ---
         self._scroll = QScrollArea()
         self._scroll.setObjectName("chatScroll")
@@ -46,6 +69,10 @@ class ChatWidget(QWidget):
         self._scroll.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
+        self._scroll.viewport().setAutoFillBackground(False)
+        self._scroll.viewport().setAttribute(
+            Qt.WidgetAttribute.WA_TranslucentBackground
+        )
         self._scroll.verticalScrollBar().setSingleStep(32)
         self._scroll.verticalScrollBar().setPageStep(280)
 
@@ -54,6 +81,8 @@ class ChatWidget(QWidget):
         container.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
+        container.setAutoFillBackground(False)
+        container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         self._messages = QVBoxLayout(container)
         self._messages.setContentsMargins(20, 16, 20, 20)
@@ -115,6 +144,27 @@ class ChatWidget(QWidget):
             sp = 18
         self._messages.setContentsMargins(lm, tm, rm, bm)
         self._messages.setSpacing(sp)
+        self._adjust_watermark(w)
+
+    def _adjust_watermark(self, width: int) -> None:
+        if self._watermark_source.isNull():
+            self._watermark.hide()
+            return
+        if width < 900:
+            size = 230
+        elif width < 1400:
+            size = 320
+        else:
+            size = 380
+        self._watermark.setPixmap(
+            self._watermark_source.scaled(
+                size,
+                size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        self._watermark.show()
 
     # -- message management ----------------------------------------------
     def clear(self) -> None:
@@ -143,6 +193,7 @@ class ChatWidget(QWidget):
             "assistant", text, sources, question_id=question_id
         )
         bubble.feedback_requested.connect(self.feedback_requested.emit)
+        bubble.speak_requested.connect(self.speak_requested.emit)
         self._add_bubble(bubble, align_right=False)
 
     def add_error(self, text: str) -> None:
@@ -186,19 +237,19 @@ class ChatWidget(QWidget):
             QSizePolicy.Policy.Maximum,
         )
         row = QHBoxLayout()
+        # Keep the conversation columns stable regardless of the text's RTL
+        # direction: assistant bubbles always share one left edge, while user
+        # bubbles always share the right edge. The bubble itself still lays
+        # Arabic text out RTL internally.
+        row.setDirection(QBoxLayout.Direction.LeftToRight)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(0)
         if align_right:
             row.addStretch(1)
             row.addWidget(bubble, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
-            row.addStretch(0)
         else:
-            row.addStretch(0)
             row.addWidget(bubble, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
             row.addStretch(1)
-        row.setStretch(0 if align_right else 2, 1)
-        row.setStretch(1 if align_right else 0, 0)
-        row.setStretch(2 if align_right else 1, 0 if align_right else 1)
         self._messages.insertLayout(self._messages.count() - 1, row)
         self._schedule_scroll_to_bottom()
 

@@ -37,7 +37,7 @@ def retrieval_variants(
             variants.append(v)
 
     high_recall_intents = {
-        "LOCATION", "SCHOLARSHIP", "PROGRAM", "FACULTY", "TUITION",
+        "LOCATION", "SCHOLARSHIP", "PROGRAM", "FACULTY", "TUITION", "ABOUT",
     }
     high_recall = (understanding.intent or "").upper() in high_recall_intents
     ambiguous = (
@@ -98,6 +98,11 @@ def _topic_variants(understanding: QueryUnderstanding) -> list[str]:
         variants.extend([
             "رسوم الدراسة مصروفات جامعة المنصورة الجديدة الكليات",
             "tuition fees New Mansoura University faculties",
+        ])
+    elif intent == "ABOUT":
+        variants.extend([
+            "عن جامعة المنصورة الجديدة رؤيتنا رسالتنا أهدافنا وقيمنا الأهداف الاستراتيجية القيم الحاكمة",
+            "about New Mansoura University vision mission goals objectives values strategic objectives",
         ])
     if lang == "en":
         variants = list(reversed(variants))

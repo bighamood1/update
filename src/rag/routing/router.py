@@ -153,7 +153,7 @@ _FACULTY_IDS = {
 # Tie-break order: more specific intents win over generic ones on equal scores
 # (e.g. "برامج Faculty of X" should be PROGRAM, not FACULTY).
 _TIE_PRIORITY = (
-    "ADMISSION", "TUITION", "SCHOLARSHIP", "LOCATION", "CONTACT", "PRESIDENT",
+    "ADMISSION", "TUITION", "SCHOLARSHIP", "LOCATION", "CONTACT", "ABOUT", "PRESIDENT",
     "EVENTS", "NEWS", "REGULATION", "COMPARISON", "ADMINISTRATION",
     "PROGRAM", "FACULTY", "FACILITY", "PERSON", "FAQ", "LIST",
     "FACT", "GENERAL",

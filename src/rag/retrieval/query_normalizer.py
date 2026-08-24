@@ -60,6 +60,10 @@ def apply_aliases(text: str) -> str:
 # Intent -> expansion keywords (both languages). Kept small and specific so
 # the fused candidate pool is not flooded with noise.
 _EXPANSIONS: dict[str, list[str]] = {
+    "ABOUT": [
+        "vision", "mission", "objectives", "goals", "values",
+        "رؤيتنا", "رسالتنا", "أهدافنا", "اهدافنا", "قيمنا", "القيم الحاكمة",
+    ],
     "FACULTY": ["faculty", "faculties", "college", "colleges", "كلية", "كليات"],
     "PROGRAM": [
         "program", "programs", "course", "courses", "department", "departments",
@@ -85,7 +89,7 @@ _EXPANSIONS: dict[str, list[str]] = {
     "FAQ": ["faq", "system", "study", "how", "كيف", "نظام"],
     "NEWS": ["news", "event", "latest", "أخبار", "فعاليات"],
     "CONTACT": ["contact", "address", "phone", "email", "اتصال", "تواصل", "عنوان", "هاتف"],
-    "FACILITY": ["facility", "facilities", "library", "campus", "مرافق", "مكتبة"],
+    "FACILITY": ["facility", "facilities", "library", "campus", "housing", "hospital", "مرافق", "مكتبة", "سكن", "إسكان", "مستشفى"],
 }
 
 

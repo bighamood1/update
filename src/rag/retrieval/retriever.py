@@ -386,6 +386,7 @@ class Retriever:
             filtered, list_mode, query_language,
             fee_mode=fee_mode, faculty_scope_mode=faculty_scope_mode,
             scholarship_mode=scholarship_mode,
+            about_mode=(intent or "").upper() == "ABOUT",
         )
         final = self._ensure_required_evidence(
             filtered, final, intent or "FACT", question, query_language, route
@@ -959,13 +960,14 @@ class Retriever:
         fee_mode: bool = False,
         faculty_scope_mode: bool = False,
         scholarship_mode: bool = False,
+        about_mode: bool = False,
     ) -> list[RetrievedChunk]:
         """Cap chunks per source URL and apply a light type-priority boost."""
         if not chunks:
             return chunks
 
         # Apply source-priority boost for list questions (re-ranking order).
-        if list_mode or fee_mode or faculty_scope_mode:
+        if list_mode or fee_mode or faculty_scope_mode or about_mode:
             boosted = []
             for c in chunks:
                 priority = self.source_priority.get((c.content_type or "").lower(), 1.0)
@@ -987,6 +989,13 @@ class Retriever:
                     if _has_department_signal(c.text):
                         signal_boost *= 1.04
                     boosted.append((c, c.score * max(priority, 1.05) * lang_boost * signal_boost))
+                elif about_mode and ctype == "about":
+                    lang_boost = (
+                        1.03
+                        if (c.language or "").lower() == (query_language or "").lower()
+                        else 1.0
+                    )
+                    boosted.append((c, c.score * max(priority, 1.05) * lang_boost))
                 elif list_mode and ctype in self.list_source_types:
                     boosted.append((c, c.score * priority))
                 else:
@@ -1010,6 +1019,12 @@ class Retriever:
                 (c.content_type or "").lower() == "scholarship"
                 or _has_scholarship_signal(c.text)
             ):
+                cap = max(cap, self.expansion_chunks_per_source)
+            if about_mode and (c.content_type or "").lower() == "about":
+                # Institutional profile answers often span adjacent sections
+                # (vision, mission, goals, strategic objectives, values) on
+                # one authoritative About page. Keep enough of that page for
+                # the requested sections to survive the final context cut.
                 cap = max(cap, self.expansion_chunks_per_source)
             if per_source.get(url, 0) >= cap:
                 continue

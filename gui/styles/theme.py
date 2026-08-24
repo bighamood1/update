@@ -11,25 +11,25 @@ COLORS: dict[str, str] = {
     "text_tertiary": "#667085",
     "border": "#E5E7EB",
     "border_strong": "#D0D5DD",
-    "input_border": "#D0D5DD",
+    "input_border": "#B33A4A",
     "input_bg": "#FFFFFF",
     "input_text": "#0B1220",
     "placeholder": "#98A2B3",
-    "accent": "#D97706",
-    "accent_hover": "#B45309",
-    "accent_pressed": "#92400E",
-    "accent_soft": "#FFF7ED",
-    "button_bg": "#D97706",
-    "button_hover": "#B45309",
-    "button_pressed": "#92400E",
+    "accent": "#981B2C",
+    "accent_hover": "#7E1524",
+    "accent_pressed": "#64101C",
+    "accent_soft": "#FFF1F3",
+    "button_bg": "#981B2C",
+    "button_hover": "#7E1524",
+    "button_pressed": "#64101C",
     "button_text": "#FFFFFF",
-    "disabled_button": "#FED7AA",
+    "disabled_button": "#D9A5AD",
     "disabled_button_text": "#FFFFFF",
-    "user_bg": "#FFF4E5",
-    "user_border": "#FCC58C",
+    "user_bg": "#FFF1F3",
+    "user_border": "#D98995",
     "assistant_bg": "#FFFFFF",
     "assistant_border": "#DCDFE4",
-    "assistant_accent": "#D97706",
+    "assistant_accent": "#981B2C",
     "link": "#1D4ED8",
     "error": "#991B1B",
     "error_bg": "#FEF2F2",
@@ -225,23 +225,27 @@ def build_qss(colors: dict[str, str] | None = None) -> str:
 
     /* ---------- chat scroll ---------- */
     #chatScroll {{
-        background: {_c('background', c)};
+        background: transparent;
         border: none;
     }}
     #chatContainer {{
-        background: {_c('background', c)};
+        background: transparent;
     }}
 
     /* ---------- bubbles ---------- */
     QFrame#bubble_user {{
-        background: {_c('user_bg', c)};
+        background: qlineargradient(
+            x1:0, y1:0, x2:1, y2:1,
+            stop:0 rgba(152, 27, 44, 34),
+            stop:1 rgba(152, 27, 44, 14)
+        );
         border: 1px solid {_c('user_border', c)};
         border-radius: 16px;
         border-top-right-radius: 4px;
         color: {_c('text_primary', c)};
     }}
     QFrame#bubble_assistant {{
-        background: {_c('assistant_bg', c)};
+        background: rgba(255, 255, 255, 238);
         border: 1px solid {_c('assistant_border', c)};
         border-left: 3px solid {_c('assistant_accent', c)};
         border-right: 3px solid transparent;
@@ -379,7 +383,11 @@ def build_qss(colors: dict[str, str] | None = None) -> str:
         border-top: 1px solid {_c('border', c)};
     }}
     #chatInput {{
-        background: {_c('input_bg', c)};
+        background: qlineargradient(
+            x1:0, y1:0, x2:1, y2:0,
+            stop:0 rgba(255, 255, 255, 248),
+            stop:1 rgba(152, 27, 44, 14)
+        );
         color: {_c('input_text', c)};
         border: 1px solid {_c('input_border', c)};
         border-radius: 12px;
@@ -396,26 +404,79 @@ def build_qss(colors: dict[str, str] | None = None) -> str:
         padding: 9px 13px;
     }}
     #sendButton {{
-        background: {_c('button_bg', c)};
+        background: qlineargradient(
+            x1:0, y1:0, x2:1, y2:1,
+            stop:0 #B12C40,
+            stop:0.55 {_c('button_bg', c)},
+            stop:1 #741322
+        );
         color: {_c('button_text', c)};
         border: none;
         border-radius: 12px;
-        padding: 10px 22px;
+        padding: 10px 18px;
         font-size: 15px;
         font-weight: 600;
-        min-width: 76px;
+        min-width: 68px;
         max-height: 52px;
     }}
-    #sendButton:hover {{ background: {_c('button_hover', c)}; }}
+    #sendButton:hover {{
+        background: qlineargradient(
+            x1:0, y1:0, x2:1, y2:1,
+            stop:0 #C2384D,
+            stop:1 {_c('button_hover', c)}
+        );
+    }}
     #sendButton:pressed {{ background: {_c('button_pressed', c)}; }}
     #sendButton:disabled {{
         background: {_c('disabled_button', c)};
         color: {_c('disabled_button_text', c)};
     }}
+    #voiceButton {{
+        background: {_c('surface_secondary', c)};
+        color: {_c('text_primary', c)};
+        border: 1px solid {_c('border_strong', c)};
+        border-radius: 26px;
+        font-size: 19px;
+        font-weight: 600;
+    }}
+    #voiceButton:hover {{
+        background: {_c('accent_soft', c)};
+        border-color: {_c('accent', c)};
+    }}
+    #voiceButton:pressed {{ background: {_c('border', c)}; }}
+    #voiceButton:disabled {{
+        background: {_c('surface_secondary', c)};
+        color: {_c('placeholder', c)};
+        border-color: {_c('border', c)};
+    }}
+    #voiceButtonRecording {{
+        background: #DC2626;
+        color: #FFFFFF;
+        border: 2px solid #FCA5A5;
+        border-radius: 26px;
+        font-size: 17px;
+        font-weight: 700;
+    }}
+    #voiceButtonRecording:hover {{ background: #B91C1C; }}
     #inputHint {{
         font-size: 11px;
         color: {_c('text_secondary', c)};
     }}
+
+    #speakButton {{
+        background: {_c('surface_secondary', c)};
+        color: {_c('text_secondary', c)};
+        border: 1px solid {_c('border', c)};
+        border-radius: 18px;
+        font-size: 15px;
+        padding: 0;
+    }}
+    #speakButton:hover {{
+        background: {_c('accent_soft', c)};
+        color: {_c('accent', c)};
+        border-color: {_c('accent', c)};
+    }}
+    #speakButton:pressed {{ background: {_c('border', c)}; }}
 
     /* ---------- jump to latest ---------- */
     #jumpButton {{

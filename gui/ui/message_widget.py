@@ -8,11 +8,12 @@ document so messages grow naturally inside the chat scroll area.
 
 from __future__ import annotations
 
+from pathlib import Path
 import re
 from typing import Final
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QFont, QTextOption
+from PySide6.QtGui import QFont, QIcon, QTextOption
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -26,6 +27,8 @@ from PySide6.QtWidgets import (
 
 from styles.theme import ANSWER_POINT_SIZE, ANSWER_STYLESHEET, FONT_FAMILY, COLORS
 from utils.language import direction_for, is_rtl
+
+ASSET_DIR = Path(__file__).resolve().parents[1] / "assets"
 
 # ---------------------------------------------------------------------------
 # Answer pre-processing: strip inline source markers the LLM might produce
@@ -309,6 +312,7 @@ class MessageBubble(QFrame):
     """A single chat message card (user, assistant, error, or welcome)."""
 
     feedback_requested = Signal(str, str)  # (question_id, rating)
+    speak_requested = Signal(str)  # displayed assistant answer
 
     MAX_WIDTH_USER = 720
     MAX_WIDTH_ASSISTANT = 860
@@ -359,14 +363,32 @@ class MessageBubble(QFrame):
         if role == "assistant" and not is_error and not is_welcome:
             self._answer = ReadOnlyText(text, markdown=True)
             self._answer.set_direction(text)
-            outer.addWidget(self._answer)
+            answer_row = QHBoxLayout()
+            answer_row.setContentsMargins(0, 0, 0, 0)
+            answer_row.setSpacing(8)
+            answer_row.addWidget(self._answer, stretch=1)
+
+            self._speak_button = QPushButton()
+            self._speak_button.setObjectName("speakButton")
+            self._speak_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._speak_button.setToolTip("Read this answer aloud")
+            self._speak_button.setAccessibleName("Read answer aloud")
+            self._speak_button.setFixedSize(36, 36)
+            self._speak_button.setIcon(QIcon(str(ASSET_DIR / "speaker.svg")))
+            self._speak_button.setIconSize(QSize(19, 19))
+            self._speak_button.clicked.connect(
+                lambda _checked=False, answer=text: self.speak_requested.emit(answer)
+            )
+            answer_row.addWidget(
+                self._speak_button, 0, Qt.AlignmentFlag.AlignTop
+            )
+            outer.addLayout(answer_row)
 
             self._sources_panel = None
             self._toggle = None
             self._sources_visible = False
             if sources:
                 from ui.source_widget import SourcesPanel
-                from PySide6.QtWidgets import QPushButton
 
                 self._toggle = QPushButton("View Sources")
                 self._toggle.setObjectName("sourcesToggle")

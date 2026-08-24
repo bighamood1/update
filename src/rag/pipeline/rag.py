@@ -24,7 +24,7 @@ from ..context.builder import ContextBuilder
 from ..context.compressor import ContextCompressor
 from ..embeddings.embedder import Embedder
 from ..feedback.analytics import initial_quality_score
-from ..generation.fast_path import person_evidence_answer, try_fast_answer
+from ..generation.fast_path import about_evidence_answer, person_evidence_answer, try_fast_answer
 from ..generation.ollama_client import OllamaClient
 from ..generation.prompts import SYSTEM_PROMPT, build_rag_prompt, build_repair_prompt
 from ..generation.response_formatter import format_final_answer
@@ -58,7 +58,7 @@ logger = get_logger(__name__)
 # instead of being truncated at the generic 4000-char cap.
 _LIST_LIKE_INTENTS = {
     "LIST", "FACULTY", "PROGRAM", "COMPARISON", "REGULATION",
-    "ADMINISTRATION", "SCHOLARSHIP", "TRANSFER",
+    "ADMINISTRATION", "SCHOLARSHIP", "TRANSFER", "ABOUT",
 }
 
 
@@ -429,11 +429,64 @@ class RAGPipeline:
         # confidence so a weak route (e.g. FACULTY 0.53) never auto-answers.
         fast_path_allowed = (
             (len(sub_questions) == 1 or (intent or "").upper() == "TUITION")
-            and not feedback_requires_regen
+            and (
+                not feedback_requires_regen
+                or (intent or "").upper() == "PROGRAM"
+            )
         )
         if fast_path_allowed and get_config().get("fast_path_enabled", True):
             t0 = time.perf_counter()
             fast_path_chunks = chunks
+            # Evidence extractors need the complete authoritative page.  The
+            # normal LLM context intentionally keeps only a few chunks, which
+            # can split a fee table, admission rule, or About-page section.
+            # Hydrate only the single page relevant to the routed intent.
+            intent_upper = (intent or "").upper()
+            page_hints = {
+                "ABOUT": ("about", "about-us"),
+                "FAQ": ("about", "about-us"),
+                "ADMINISTRATION": ("about", "about-us"),
+                "ADMISSION": ("admission", "undergarduate-admission"),
+                "REGULATION": ("regulation", "transfer-rules"),
+                "TRANSFER": ("regulation", "transfer-rules"),
+                "SCHOLARSHIP": ("scholarship", "scholarships"),
+                "TUITION": ("tuition", "tuition-fees"),
+                "CONTACT": ("contact", "contact-us"),
+            }
+            if intent_upper == "FACILITY" and any(
+                marker in question.lower()
+                for marker in ("سكن", "إسكان", "اسكان", "housing", "dorm")
+            ):
+                page_hints["FACILITY"] = ("facility", "housing")
+            elif intent_upper == "FACILITY":
+                page_hints["FACILITY"] = ("about", "about-us")
+            page_hint = page_hints.get(intent_upper)
+            if page_hint:
+                expected_type, url_hint = page_hint
+                pages = [
+                    c for c in chunks
+                    if (c.content_type or "").lower() == expected_type
+                    and url_hint in (c.source_url or "")
+                ]
+                if pages:
+                    top_page = max(
+                        pages,
+                        key=lambda c: (
+                            (c.language or "").lower() == query_language,
+                            c.score,
+                        ),
+                    )
+                    hydrated = self.vectorstore.get_source_document_by_url(
+                        top_page.source_url or ""
+                    )
+                    hydrated = [
+                        c for c in hydrated
+                        if (c.source_url or "") == (top_page.source_url or "")
+                        and (c.language or "").lower() == (top_page.language or "").lower()
+                    ]
+                    hydrated.sort(key=lambda c: c.chunk_index or 0)
+                    if hydrated:
+                        fast_path_chunks = hydrated
             # A specific faculty's programs can span many adjacent chunks on
             # one authoritative faculty page. Retrieval keeps only the top
             # context chunks for LLM efficiency, but the deterministic list
@@ -450,7 +503,9 @@ class RAGPipeline:
                 ]
                 if faculty_pages:
                     top_page = max(faculty_pages, key=lambda c: c.score)
-                    hydrated = self.vectorstore.get_by_document(top_page.document_id)
+                    hydrated = self.vectorstore.get_source_document_by_url(
+                        top_page.source_url or ""
+                    )
                     hydrated = [
                         c for c in hydrated
                         if (c.source_url or "") == (top_page.source_url or "")
@@ -692,6 +747,48 @@ class RAGPipeline:
                 validation["issues"].append("regenerated_after_validation")
             else:
                 validation["issues"].append("regeneration_failed_validation")
+
+        # If the model refuses despite an explicitly headed institutional
+        # section (vision/mission/goals/values) being present, recover that
+        # section directly from the retrieved About page. This is evidence-
+        # only and prevents a small local model's false refusal from hiding
+        # information that retrieval found correctly.
+        if (intent or "").upper() == "ABOUT":
+            about_fallback_chunks = chunks
+            about_pages = [
+                c for c in chunks
+                if (c.content_type or "").lower() == "about" and c.source_url
+            ]
+            if about_pages:
+                top_about = max(
+                    about_pages,
+                    key=lambda c: (
+                        (c.language or "").lower() == query_language,
+                        c.score,
+                    ),
+                )
+                hydrated = self.vectorstore.get_by_document(top_about.document_id)
+                hydrated = [
+                    c for c in hydrated
+                    if (c.source_url or "") == (top_about.source_url or "")
+                    and (c.language or "").lower() == (top_about.language or "").lower()
+                ]
+                hydrated.sort(key=lambda c: c.chunk_index or 0)
+                if hydrated:
+                    about_fallback_chunks = hydrated
+            about_fallback = about_evidence_answer(
+                question, about_fallback_chunks, query_language
+            )
+            if about_fallback is not None:
+                answer, about_chunks = about_fallback
+                sources = self.context_builder.sources(about_chunks)
+                validation = validate_answer(
+                    answer, sources, about_chunks,
+                    question_language=query_language,
+                )
+                validation["issues"].append("about_evidence_fallback")
+                self._fallback_used = True
+                logger.warning("Using grounded About-section evidence fallback.")
 
         # Qwen3 may exhaust its visible-answer budget on private reasoning or
         # leak meta-reasoning even though the retrieved evidence states a dean

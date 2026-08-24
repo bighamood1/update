@@ -8,9 +8,7 @@ dist/
 build/
 
 # Local environment values (keep the shareable template)
-.env
-.env.*
-!.env.example
+
 
 
 
@@ -21,6 +19,7 @@ build/
 # Logs
 logs/
 *.log
+
 
 # Test/cache artifacts
 .pytest_cache/

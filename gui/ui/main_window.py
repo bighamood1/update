@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import (
     QFrame,
@@ -19,11 +19,12 @@ from PySide6.QtWidgets import (
 )
 
 from api_client import APIClient, ChatResult
-from config import API_BASE_URL, API_TIMEOUT_SECONDS
+from config import API_BASE_URL, API_TIMEOUT_SECONDS, VOICE_ENABLED
 from styles.theme import COLORS, FONT_FAMILY, build_qss
 from ui.chat_widget import ChatWidget
 from ui.input_widget import InputWidget
 from ui.message_widget import LoadingBubble
+from voice import AudioRecorder, SpeechWorker, TranscriptionWorker, VoiceError
 from worker import ApiWorker, FeedbackWorker
 
 GUIDIR = Path(__file__).resolve().parents[1]
@@ -42,6 +43,14 @@ class ChatWindow(QMainWindow):
         self._worker: ApiWorker | None = None
         self._loading_bubble: LoadingBubble | None = None
         self._feedback_workers: list[FeedbackWorker] = []
+        self._recorder = AudioRecorder()
+        self._transcriber: TranscriptionWorker | None = None
+        self._speaker: SpeechWorker | None = None
+        self._speaking_text = ""
+        self._queued_speech = ""
+        self._voice_timer = QTimer(self)
+        self._voice_timer.setInterval(100)
+        self._voice_timer.timeout.connect(self._check_voice_recording)
         # Rolling conversation context (last ~10 turns) sent with each message
         # so follow-up questions ("وماذا عن كلية الطب؟") can resolve references.
         self._history: list[dict] = []
@@ -64,6 +73,7 @@ class ChatWindow(QMainWindow):
         self._chat = ChatWidget()
         self._chat.suggestion_clicked.connect(self.send_question)
         self._chat.feedback_requested.connect(self._on_feedback)
+        self._chat.speak_requested.connect(self._speak_answer)
         self._chat.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
@@ -71,6 +81,8 @@ class ChatWindow(QMainWindow):
         root.addWidget(self._chat, stretch=1)
         self._input_widget = InputWidget()
         self._input_widget.submitted.connect(self.send_question)
+        self._input_widget.voice_requested.connect(self._toggle_voice_recording)
+        self._input_widget.set_voice_enabled(VOICE_ENABLED)
         self._input_widget.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
@@ -123,6 +135,9 @@ class ChatWindow(QMainWindow):
         if self._busy or not message:
             return
 
+        # A new question takes priority over any answer currently being read.
+        self._stop_speaking()
+
         self._chat.add_user(message)
         self._input_widget.clear()
         self._set_busy(True)
@@ -137,6 +152,7 @@ class ChatWindow(QMainWindow):
     def clear_chat(self) -> None:
         if not self._confirm_clear():
             return
+        self._cancel_voice_activity()
         self._chat.clear()
         self._input_widget.clear()
         self._history = []
@@ -168,6 +184,116 @@ class ChatWindow(QMainWindow):
 
     def _set_busy(self, busy: bool) -> None:
         self._input_widget.set_enabled(not busy)
+
+    # -- local voice -----------------------------------------------------
+    def _toggle_voice_recording(self) -> None:
+        """Start/stop one local recording; its transcript uses send_question."""
+        if not VOICE_ENABLED or self._busy:
+            return
+        if self._recorder.recording:
+            self._finish_voice_recording()
+            return
+        self._stop_speaking()
+        try:
+            self._recorder.start()
+        except VoiceError as exc:
+            self._voice_error(str(exc))
+            return
+        self._input_widget.set_voice_state("listening")
+        self._voice_timer.start()
+
+    def _check_voice_recording(self) -> None:
+        if self._recorder.should_auto_stop():
+            self._finish_voice_recording()
+
+    def _finish_voice_recording(self) -> None:
+        self._voice_timer.stop()
+        try:
+            audio_path = self._recorder.stop()
+        except VoiceError as exc:
+            self._voice_error(str(exc))
+            return
+        self._input_widget.set_enabled(False)
+        self._input_widget.set_voice_state(
+            "transcribing", "Transcribing locally… the first use may load the speech model."
+        )
+        worker = TranscriptionWorker(audio_path)
+        self._transcriber = worker
+        worker.succeeded.connect(self._on_transcribed)
+        worker.failed.connect(self._voice_error)
+        worker.finished.connect(self._forget_transcriber)
+        worker.start()
+
+    def _on_transcribed(self, text: str) -> None:
+        """Display the transcript then send it through the normal RAG path."""
+        self._input_widget.set_enabled(True)
+        self._input_widget.set_voice_state("idle", f"Heard: {text}")
+        self._input_widget.set_text(text)
+        # This is intentionally the same method used by the Send button.
+        self.send_question(text)
+
+    def _forget_transcriber(self) -> None:
+        self._transcriber = None
+
+    def _voice_error(self, message: str) -> None:
+        self._voice_timer.stop()
+        self._recorder.cancel()
+        self._input_widget.set_enabled(True)
+        self._input_widget.set_voice_state("error", message)
+        self._chat.add_error(message)
+
+    def _speak_answer(self, text: str) -> None:
+        """Toggle local speech for one displayed answer (never calls RAG)."""
+        text = (text or "").strip()
+        if not text:
+            return
+        if self._speaker is not None and self._speaker.isRunning():
+            if self._speaking_text == text:
+                self._queued_speech = ""
+            else:
+                self._queued_speech = text
+            self._speaker.cancel()
+            return
+        self._start_speaking(text)
+
+    def _start_speaking(self, text: str) -> None:
+        self._speaking_text = text
+        self._input_widget.set_voice_state("speaking")
+        worker = SpeechWorker(text)
+        self._speaker = worker
+        worker.finished_ok.connect(self._on_speech_finished)
+        worker.failed.connect(self._on_speech_failed)
+        worker.start()
+
+    def _on_speech_finished(self) -> None:
+        self._speaker = None
+        self._speaking_text = ""
+        queued, self._queued_speech = self._queued_speech, ""
+        if queued:
+            self._start_speaking(queued)
+        else:
+            self._input_widget.set_voice_state("idle")
+
+    def _on_speech_failed(self, message: str) -> None:
+        self._speaker = None
+        self._speaking_text = ""
+        self._queued_speech = ""
+        self._voice_error(message)
+
+    def _stop_speaking(self) -> None:
+        self._queued_speech = ""
+        if self._speaker is not None and self._speaker.isRunning():
+            self._speaker.cancel()
+        else:
+            self._speaker = None
+            self._speaking_text = ""
+            self._input_widget.set_voice_state("idle")
+
+    def _cancel_voice_activity(self) -> None:
+        self._voice_timer.stop()
+        self._recorder.cancel()
+        self._stop_speaking()
+        self._input_widget.set_voice_state("idle")
 
     def _remove_loading(self) -> None:
         # Clear the reference first so a removal error can never leave the
@@ -235,8 +361,21 @@ class ChatWindow(QMainWindow):
                 pass
 
     def closeEvent(self, event) -> None:  # noqa: D102
+        self._voice_timer.stop()
+        self._recorder.cancel()
+        self._stop_speaking()
+        if self._transcriber is not None and self._transcriber.isRunning():
+            # Destroying an active QThread can crash Qt. A normal transcription
+            # is short, so keep the window alive until it finishes safely.
+            self._input_widget.set_voice_state(
+                "transcribing", "Please wait for voice transcription to finish before closing."
+            )
+            event.ignore()
+            return
         if self._worker is not None and self._worker.isRunning():
             self._worker.wait(2000)
+        if self._speaker is not None and self._speaker.isRunning():
+            self._speaker.wait(2000)
         for worker in self._feedback_workers:
             if worker.isRunning():
                 worker.wait(2000)

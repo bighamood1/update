@@ -196,7 +196,7 @@ def get_config() -> dict:
                 "INTENT_CONTEXT_CHUNKS",
                 "fact:3,location:3,contact:3,tuition:3,person:3,faq:3,"
                 "news:4,facility:4,scholarship:4,unknown:4,admission:5,"
-                "regulation:5,administration:5,faculty:6,program:6,list:6,"
+                "regulation:5,administration:5,about:6,faculty:6,program:6,list:6,"
                 "comparison:6",
             ),
             {
@@ -213,6 +213,7 @@ def get_config() -> dict:
                 "admission": 5,
                 "regulation": 5,
                 "administration": 5,
+                "about": 6,
                 "faculty": 6,
                 "program": 6,
                 "list": 6,
