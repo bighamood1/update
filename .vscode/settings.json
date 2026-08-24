@@ -1,4 +1,13 @@
 {
   "python.defaultInterpreterPath": "C:\\Users\\VICTUS\\Downloads\\RAG2ENV\\Scripts\\python.exe",
-  "python.terminal.activateEnvironment": true
+  "python.terminal.activateEnvironment": false,
+  "terminal.integrated.defaultProfile.windows": "Command Prompt",
+  "terminal.integrated.profiles.windows": {
+    "Command Prompt": {
+      "path": "${env:windir}\\System32\\cmd.exe"
+    }
+  },
+  "terminal.integrated.env.windows": {
+    "PYTHONIOENCODING": "utf-8"
+  }
 }

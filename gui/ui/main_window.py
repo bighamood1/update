@@ -46,6 +46,7 @@ class ChatWindow(QMainWindow):
         self._recorder = AudioRecorder()
         self._transcriber: TranscriptionWorker | None = None
         self._speaker: SpeechWorker | None = None
+        self._speech_error: str | None = None
         self._speaking_text = ""
         self._queued_speech = ""
         self._voice_timer = QTimer(self)
@@ -261,24 +262,43 @@ class ChatWindow(QMainWindow):
         self._input_widget.set_voice_state("speaking")
         worker = SpeechWorker(text)
         self._speaker = worker
+        self._speech_error = None
         worker.finished_ok.connect(self._on_speech_finished)
         worker.failed.connect(self._on_speech_failed)
+        # Keep the QThread referenced until Qt confirms that run() has fully
+        # returned. Dropping the last Python reference from a custom signal
+        # can abort the whole process with "QThread: Destroyed while thread is
+        # still running".
+        worker.finished.connect(
+            lambda w=worker: self._on_speech_thread_finished(w)
+        )
         worker.start()
 
     def _on_speech_finished(self) -> None:
+        """Record a successful result; cleanup waits for QThread.finished."""
+        self._speech_error = None
+
+    def _on_speech_failed(self, message: str) -> None:
+        """Record the error; cleanup waits for QThread.finished."""
+        self._speech_error = message
+
+    def _on_speech_thread_finished(self, worker: SpeechWorker) -> None:
+        """Release a speaker only after Qt confirms its thread has stopped."""
+        if self._speaker is not worker:
+            worker.deleteLater()
+            return
+        error = self._speech_error
         self._speaker = None
+        self._speech_error = None
         self._speaking_text = ""
         queued, self._queued_speech = self._queued_speech, ""
-        if queued:
+        worker.deleteLater()
+        if error:
+            self._voice_error(error)
+        elif queued:
             self._start_speaking(queued)
         else:
             self._input_widget.set_voice_state("idle")
-
-    def _on_speech_failed(self, message: str) -> None:
-        self._speaker = None
-        self._speaking_text = ""
-        self._queued_speech = ""
-        self._voice_error(message)
 
     def _stop_speaking(self) -> None:
         self._queued_speech = ""
@@ -364,19 +384,24 @@ class ChatWindow(QMainWindow):
         self._voice_timer.stop()
         self._recorder.cancel()
         self._stop_speaking()
-        if self._transcriber is not None and self._transcriber.isRunning():
-            # Destroying an active QThread can crash Qt. A normal transcription
-            # is short, so keep the window alive until it finishes safely.
+        active_threads = [
+            worker
+            for worker in (
+                self._transcriber,
+                self._worker,
+                self._speaker,
+                *self._feedback_workers,
+            )
+            if worker is not None and worker.isRunning()
+        ]
+        if active_threads:
+            # Never destroy the window while a QThread is active. Polling keeps
+            # the UI responsive and closes automatically as soon as every
+            # background operation has finished.
             self._input_widget.set_voice_state(
-                "transcribing", "Please wait for voice transcription to finish before closing."
+                "transcribing", "Finishing the current local operation before closing…"
             )
             event.ignore()
+            QTimer.singleShot(150, self.close)
             return
-        if self._worker is not None and self._worker.isRunning():
-            self._worker.wait(2000)
-        if self._speaker is not None and self._speaker.isRunning():
-            self._speaker.wait(2000)
-        for worker in self._feedback_workers:
-            if worker.isRunning():
-                worker.wait(2000)
         event.accept()
