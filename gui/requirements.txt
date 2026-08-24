@@ -1,0 +1,3 @@
+# GUI/client dependencies (runs alongside the RAG project's virtualenv).
+PySide6>=6.6
+httpx>=0.26

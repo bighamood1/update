@@ -1,0 +1,22 @@
+{
+  "dataset_path": "C:\\Users\\VICTUS\\Downloads\\RAG--PHASE-2--complete\\RAG--PHASE-2--main\\data\\documents.jsonl",
+  "dataset_hash": "dce0d1fbe31e81157f6641ce057b4c6631da2090b7851431800e1e7bf82785e1",
+  "document_count": 1482,
+  "text_document_count": 332,
+  "chunk_count": 2475,
+  "embedding_model": "intfloat/multilingual-e5-small",
+  "embedding_dimension": 384,
+  "vector_database": "chromadb",
+  "chroma_collection": "nmu_documents",
+  "chunk_size": 800,
+  "chunk_overlap": 100,
+  "chunking_version": 2,
+  "metadata_schema_version": 2,
+  "retrieval_version": 2,
+  "build_timestamp": "2026-08-24T15:04:16.237844+00:00",
+  "python_version": "3.11.0",
+  "platform": "win32",
+  "duration_seconds": 297.0,
+  "gallery_records_preserved": true,
+  "dataset_untouched": true
+}

@@ -1,0 +1,48 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "NMU: Build Index",
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
+      "args": ["scripts\\rebuild_index.py"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": { "PYTHONIOENCODING": "utf-8" }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "NMU: Start API",
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
+      "args": ["api\\server.py"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PYTHONIOENCODING": "utf-8",
+          "OLLAMA_MODEL": "qwen3:4b",
+          "OLLAMA_THINK": "false",
+          "OLLAMA_MAX_OUTPUT_TOKENS": "1400",
+          "OLLAMA_NUM_CTX": "4096"
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "NMU: Start GUI",
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
+      "args": ["app.py"],
+      "options": {
+        "cwd": "${workspaceFolder}\\gui",
+        "env": {
+          "PYTHONIOENCODING": "utf-8",
+          "API_BASE_URL": "http://127.0.0.1:8000"
+        }
+      },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+torch>=2.0
+sentence-transformers==3.3.1
+chromadb>=1.5
+pydantic>=2.0
+python-dotenv>=1.0
+httpx>=0.28
+numpy>=1.26,<2
+tqdm>=4.66
+pytest>=8.0
+ollama>=0.6

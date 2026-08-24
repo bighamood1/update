@@ -1,0 +1,8 @@
+{"id": "q001", "question": "What is New Mansoura University?", "lang": "en", "category": "identity", "expected_topics": ["smart university", "one of the generation of smart universities"]}
+{"id": "q002", "question": "ما هي جامعة المنصورة الجديدة؟", "lang": "ar", "category": "identity", "expected_topics": ["جامعة أهلية", "قرار", "2020", "المدن الجديدة", "المنصورة الجديدة"]}
+{"id": "q005", "question": "ما هي كليات جامعة المنصورة الجديدة؟", "lang": "ar", "category": "faculties", "expected_topics": ["الأعمال", "القانون", "الهندسة", "الطب", "الصيدلة", "طب الأسنان", "العلوم"]}
+{"id": "q010", "question": "كم تبلغ مصروفات الدراسة في الجامعة؟", "lang": "ar", "category": "tuition", "expected_topics": ["مصروفات", "رسوم", "جنيه"]}
+{"id": "q016", "question": "من هو رئيس جامعة المنصورة الجديدة؟", "lang": "ar", "category": "president", "expected_topics": ["معوض", "الخولي", "رئيس"]}
+{"id": "q021", "question": "What are the rules for transferring to New Mansoura University?", "lang": "en", "category": "regulation", "expected_topics": ["transfer", "rules", "acceptance rate"]}
+{"id": "q026", "question": "ما هو نظام الدراسة في الجامعة؟", "lang": "ar", "category": "faq", "expected_topics": ["نظام", "دراسة", "الدراسة"]}
+{"id": "q101", "question": "What is the population of Egypt?", "lang": "en", "category": "out_of_scope", "expected_topics": []}

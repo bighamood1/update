@@ -1,0 +1,12 @@
+{"id": "b001", "question": "What is New Mansoura University?", "lang": "en", "category": "identity", "expected_topics": ["smart university", "generation of smart universities"], "expected_sources": ["https://nmu.edu.eg/en/about-us"]}
+{"id": "b002", "question": "ما هي جامعة المنصورة الجديدة؟", "lang": "ar", "category": "identity", "expected_topics": ["جامعة ذكية", "الجامعة"], "expected_sources": ["https://nmu.edu.eg/ar/about-us"]}
+{"id": "b003", "question": "What faculties does New Mansoura University have?", "lang": "en", "category": "faculties", "expected_topics": ["Business", "Law", "Engineering", "Medicine", "Pharmacy", "Dentistry", "Science"], "expected_sources": ["https://nmu.edu.eg/en/all-faculties-programs", "https://nmu.edu.eg/en/about-us"]}
+{"id": "b004", "question": "ما هي كليات جامعة المنصورة الجديدة؟", "lang": "ar", "category": "faculties", "expected_topics": ["كلية الطب", "كلية الهندسة", "كلية العلوم", "كلية الصيدلة", "كلية طب الأسنان", "كلية إدارة الأعمال", "كلية القانون"], "expected_sources": ["https://nmu.edu.eg/ar/all-faculties-programs", "https://nmu.edu.eg/ar/about-us"]}
+{"id": "b005", "question": "What programs does the Faculty of Engineering offer?", "lang": "en", "category": "programs", "expected_topics": ["programs", "Engineering"], "expected_sources": []}
+{"id": "b006", "question": "ايه برامج Faculty of Artificial Intelligence؟", "lang": "mixed", "category": "programs", "expected_topics": ["برامج", "ذكاء اصطناعي"], "expected_sources": []}
+{"id": "b007", "question": "How much is the tuition fees?", "lang": "en", "category": "tuition", "expected_topics": ["tuition", "fees"], "expected_sources": []}
+{"id": "b008", "question": "مصروفات الجامعة؟", "lang": "ar", "category": "tuition", "expected_topics": ["مصروفات", "رسوم"], "expected_sources": []}
+{"id": "b009", "question": "What are the admission requirements for New Mansoura University?", "lang": "en", "category": "admission", "expected_topics": ["admission", "requirements", "secondary"], "expected_sources": []}
+{"id": "b010", "question": "شروط القبول في جامعة المنصورة الجديدة؟", "lang": "ar", "category": "admission", "expected_topics": ["شروط", "قبول", "ثانوية"], "expected_sources": []}
+{"id": "b011", "question": "Who is the president of New Mansoura University?", "lang": "en", "category": "person", "expected_topics": ["president", "professor"], "expected_sources": []}
+{"id": "b012", "question": "أين تقع جامعة المنصورة الجديدة؟", "lang": "ar", "category": "location", "expected_topics": ["الدقهلية", "المنصورة الجديدة"], "expected_sources": []}

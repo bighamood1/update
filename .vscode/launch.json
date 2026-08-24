@@ -1,0 +1,41 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "NMU: API",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${command:python.interpreterPath}",
+      "program": "${workspaceFolder}\\api\\server.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": {
+        "PYTHONIOENCODING": "utf-8",
+        "OLLAMA_MODEL": "qwen3:4b",
+        "OLLAMA_THINK": "false",
+        "OLLAMA_MAX_OUTPUT_TOKENS": "1400",
+        "OLLAMA_NUM_CTX": "4096"
+      }
+    },
+    {
+      "name": "NMU: GUI",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${command:python.interpreterPath}",
+      "program": "${workspaceFolder}\\gui\\app.py",
+      "cwd": "${workspaceFolder}\\gui",
+      "console": "integratedTerminal",
+      "env": {
+        "PYTHONIOENCODING": "utf-8",
+        "API_BASE_URL": "http://127.0.0.1:8000"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "NMU: API + GUI",
+      "configurations": ["NMU: API", "NMU: GUI"],
+      "stopAll": true
+    }
+  ]
+}

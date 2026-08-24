@@ -1,0 +1,4 @@
+# Local RAG API adapter dependencies.
+# These run on the RAG project's virtualenv (they import src/rag).
+fastapi>=0.110
+uvicorn>=0.29
